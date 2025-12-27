@@ -1,0 +1,1114 @@
+--- src/components/screens/ResultScreen.tsx ---
+// src/components/screens/ResultScreen.tsx
+import React from "react";
+import { RotateCcw, Home } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { GameState, UIMode } from "@/types";
+
+interface ResultScreenProps {
+  gameState: GameState;
+  uiMode: UIMode;
+  onRetry: () => void;
+  onHome: () => void;
+}
+
+export const ResultScreen: React.FC<ResultScreenProps> = ({
+  gameState,
+  uiMode,
+  onRetry,
+  onHome,
+}) => {
+  const isRugged = uiMode === "RUGGED";
+
+  const containerStyle = isRugged
+    ? "bg-white text-black font-mono selection:bg-black selection:text-white"
+    : "bg-gradient-to-br from-indigo-900 via-purple-900 to-black text-white font-sans";
+
+  const buttonStyle = isRugged
+    ? "border-2 border-black px-4 py-2 hover:bg-black hover:text-white transition-colors uppercase font-bold text-sm"
+    : "bg-white/20 hover:bg-white/30 px-6 py-3 rounded-full font-bold backdrop-blur text-sm transition-transform active:scale-95";
+
+  return (
+    <div
+      className={cn(
+        "min-h-screen flex flex-col items-center justify-center p-8 text-center",
+        containerStyle
+      )}
+    >
+      <div className="animate-in slide-in-from-bottom-10 fade-in duration-500 space-y-8 w-full max-w-sm">
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold opacity-60">FINISHED</h2>
+          <div className="text-8xl font-black tracking-tighter">
+            {gameState.score}
+          </div>
+        </div>
+
+        <div
+          className={cn(
+            "p-6 w-full mx-auto space-y-3",
+            isRugged ? "bg-gray-100" : "bg-white/10 rounded-xl"
+          )}
+        >
+          <div className="flex justify-between text-sm font-bold">
+            <span className="opacity-60">DIFFICULTY</span>
+            <span>{gameState.difficulty}</span>
+          </div>
+          <div className="flex justify-between text-sm font-bold">
+            <span className="opacity-60">MAX COMBO</span>
+            <span className="text-yellow-500">{gameState.maxCombo}</span>
+          </div>
+          <div className="h-px bg-current opacity-20" />
+          <div className="flex justify-between text-sm font-bold">
+            <span className="opacity-60">HIGH SCORE</span>
+            <span>{Math.max(gameState.score, gameState.highScore)}</span>
+          </div>
+        </div>
+
+        <div className="flex gap-4 justify-center pt-8">
+          <button onClick={onHome} className={buttonStyle}>
+            <Home size={20} />
+          </button>
+          <button
+            onClick={onRetry}
+            className={cn(buttonStyle, "flex items-center gap-2")}
+          >
+            <RotateCcw size={20} /> RETRY
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+--- src/components/screens/GameScreen.tsx ---
+// src/components/screens/GameScreen.tsx
+import React, { useState, useEffect } from "react";
+import { Home } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { GameConfig, GameState, FeedbackState, AnswerType } from "@/types";
+import { Keypad } from "@/components/ui/Keypad"; // 中身はコントローラー
+import { NumberPanel } from "@/components/ui/NumberPanel";
+import { useSound } from "@/hooks/useSound";
+
+interface GameScreenProps {
+  config: GameConfig;
+  gameState: GameState;
+  feedback: FeedbackState | null;
+  onAnswer: (val: AnswerType) => void;
+  onPass?: () => void; // 今回は未使用
+  onAbort: () => void;
+  onStartGame: () => void;
+}
+
+export const GameScreen: React.FC<GameScreenProps> = ({
+  config,
+  gameState,
+  feedback,
+  onAnswer,
+  onAbort,
+  onStartGame,
+}) => {
+  const isRugged = config.uiMode === "RUGGED";
+  const { playCorrect, playPass, playCount, playGo } = useSound(
+    config.isSoundEnabled
+  );
+
+  // カウントダウン
+  const [count, setCount] = useState(3);
+  useEffect(() => {
+    if (gameState.status === "COUNTDOWN") {
+      setCount(3);
+      playCount?.();
+      const timer = setInterval(() => setCount((prev) => prev - 1), 1000);
+      return () => clearInterval(timer);
+    }
+  }, [gameState.status, playCount]);
+
+  useEffect(() => {
+    if (gameState.status !== "COUNTDOWN") return;
+    if (count > 0 && count < 3) playCount?.();
+    if (count === 0) {
+      playGo?.();
+      onStartGame();
+    }
+  }, [count, gameState.status, playCount, playGo, onStartGame]);
+
+  // 効果音
+  useEffect(() => {
+    if (feedback?.type === "CORRECT") playCorrect?.();
+    if (feedback?.type === "MISS") playPass?.(); // Miss音の代わりにPass音を流用
+    if (feedback?.type === "TIME_UP") playPass?.();
+  }, [feedback, playCorrect, playPass]);
+
+  const containerStyle = isRugged
+    ? "bg-white text-black font-mono"
+    : "bg-gradient-to-br from-slate-900 via-blue-950 to-black text-white font-sans";
+
+  return (
+    <div
+      className={cn(
+        "min-h-screen flex flex-col items-center p-4 relative overflow-hidden",
+        containerStyle
+      )}
+    >
+      {/* カウントダウンオーバーレイ */}
+      {gameState.status === "COUNTDOWN" && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="text-9xl font-black text-white animate-bounce">
+            {count > 0 ? count : "GO!"}
+          </div>
+        </div>
+      )}
+
+      {/* Header: Score & Gauge */}
+      <div className="w-full max-w-md pt-4 pb-8 space-y-4">
+        <div className="flex justify-between items-end px-2">
+          <div className="text-sm font-bold opacity-60">SCORE</div>
+          <div className="text-4xl font-black tabular-nums leading-none">
+            {gameState.score}
+          </div>
+        </div>
+
+        {/* Clear Gauge */}
+        <div className="relative w-full h-6 bg-gray-700 rounded-full overflow-hidden border-2 border-gray-600">
+          <div
+            className={cn(
+              "h-full transition-all duration-300 ease-out",
+              gameState.clearGauge > 50
+                ? "bg-green-500"
+                : gameState.clearGauge > 20
+                ? "bg-yellow-500"
+                : "bg-red-500"
+            )}
+            style={{ width: `${gameState.clearGauge}%` }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white shadow-black drop-shadow-md">
+            LIFE
+          </div>
+        </div>
+
+        {/* Combo */}
+        <div className="h-8 flex justify-center">
+          {gameState.combo > 1 && (
+            <div className="text-yellow-400 font-black italic text-xl animate-pulse">
+              {gameState.combo} COMBO!
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Game Area */}
+      <div className="w-full max-w-md flex-1 flex flex-col items-center justify-center relative">
+        <NumberPanel
+          formula={gameState.currentFormula}
+          value={gameState.displayValue}
+          status={gameState.status}
+          uiMode={config.uiMode}
+        />
+
+        {/* Feedback Overlay */}
+        {feedback && (
+          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+            <span
+              className={cn(
+                "text-6xl font-black animate-ping-once opacity-0 transform scale-50",
+                feedback.type === "CORRECT" ? "text-green-500" : "text-red-500"
+              )}
+            >
+              {feedback.msg}
+            </span>
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="w-full mt-8">
+          <Keypad
+            uiMode={config.uiMode}
+            onInput={onAnswer}
+            disabled={gameState.status !== "INPUT"}
+          />
+        </div>
+      </div>
+
+      {/* Footer */}
+      <button
+        onClick={onAbort}
+        className="mt-8 mb-4 flex items-center gap-2 text-xs font-bold opacity-30 hover:opacity-100 transition-opacity"
+      >
+        <Home size={14} /> ABORT GAME
+      </button>
+
+      <style jsx global>{`
+        @keyframes ping-once {
+          0% {
+            transform: scale(0.5);
+            opacity: 0;
+          }
+          50% {
+            transform: scale(1.2);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0;
+          }
+        }
+        .animate-ping-once {
+          animation: ping-once 0.5s cubic-bezier(0, 0, 0.2, 1) forwards;
+        }
+      `}</style>
+    </div>
+  );
+};
+--- src/components/screens/HomeScreen.tsx ---
+// src/components/screens/HomeScreen.tsx
+import React from "react";
+import { Settings, Zap, Volume2, VolumeX } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { GameConfig, Difficulty } from "@/types";
+
+interface HomeScreenProps {
+  config: GameConfig;
+  setConfig: React.Dispatch<React.SetStateAction<GameConfig>>;
+  highScore: number;
+  onStart: () => void;
+}
+
+export const HomeScreen: React.FC<HomeScreenProps> = ({
+  config,
+  setConfig,
+  highScore,
+  onStart,
+}) => {
+  const isRugged = config.uiMode === "RUGGED";
+
+  return (
+    <div
+      className={cn(
+        "min-h-screen w-full flex flex-col items-center justify-center p-6 transition-colors duration-500",
+        isRugged
+          ? "bg-white text-black font-mono selection:bg-black selection:text-white"
+          : "bg-linear-to-br from-indigo-900 via-purple-900 to-black text-white font-sans"
+      )}
+    >
+      <div className="max-w-md w-full space-y-12">
+        {/* Title */}
+        <div className="text-center space-y-2">
+          <h1
+            className={cn(
+              "text-6xl font-black tracking-tighter",
+              !isRugged &&
+                "text-transparent bg-clip-text bg-linear-to-r from-cyan-400 to-purple-400"
+            )}
+          >
+            HIGH / JUST / LOW
+          </h1>
+          <p
+            className={cn(
+              "text-sm font-bold tracking-widest",
+              isRugged ? "text-gray-500" : "text-gray-400"
+            )}
+          >
+            INSTANT REFLEX GAME
+          </p>
+        </div>
+
+        {/* Settings Grid */}
+        <div
+          className={cn(
+            "grid grid-cols-2 gap-4",
+            !isRugged && "bg-black/20 p-6 rounded-2xl"
+          )}
+        >
+          {/* Difficulty */}
+          <div className="col-span-2 space-y-2">
+            <label className="text-xs font-bold opacity-60">DIFFICULTY</label>
+            <div className="flex gap-2">
+              {(["EASY", "NORMAL", "HARD", "EXTREME"] as Difficulty[]).map(
+                (d) => (
+                  <button
+                    key={d}
+                    onClick={() =>
+                      setConfig((prev) => ({ ...prev, difficulty: d }))
+                    }
+                    className={cn(
+                      "flex-1 py-3 text-[10px] sm:text-xs font-bold transition-all uppercase",
+                      config.difficulty === d
+                        ? isRugged
+                          ? "bg-black text-white"
+                          : "bg-cyan-500 text-white shadow-lg shadow-cyan-500/30"
+                        : isRugged
+                        ? "bg-gray-100 text-gray-400"
+                        : "bg-white/5 text-gray-400",
+                      !isRugged && "rounded-lg"
+                    )}
+                  >
+                    {d}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* UI Toggle */}
+          <button
+            onClick={() =>
+              setConfig((prev) => ({
+                ...prev,
+                uiMode: prev.uiMode === "RUGGED" ? "LUXURY" : "RUGGED",
+              }))
+            }
+            className={cn(
+              "col-span-1 flex items-center justify-center gap-2 py-3 text-xs font-bold",
+              isRugged
+                ? "border-2 border-gray-200 text-gray-400"
+                : "bg-white/10 text-white rounded-lg"
+            )}
+          >
+            {isRugged ? <Settings size={14} /> : <Zap size={14} />}{" "}
+            {config.uiMode}
+          </button>
+
+          {/* Sound Toggle */}
+          <button
+            onClick={() =>
+              setConfig((prev) => ({
+                ...prev,
+                isSoundEnabled: !prev.isSoundEnabled,
+              }))
+            }
+            className={cn(
+              "col-span-1 flex items-center justify-center gap-2 py-3 text-xs font-bold",
+              isRugged
+                ? "border-2 border-gray-200 text-gray-400"
+                : "bg-white/10 text-white rounded-lg"
+            )}
+          >
+            {config.isSoundEnabled ? (
+              <Volume2 size={14} />
+            ) : (
+              <VolumeX size={14} />
+            )}{" "}
+            SOUND
+          </button>
+        </div>
+
+        {/* Start Button */}
+        <button
+          onClick={onStart}
+          className={cn(
+            "w-full py-6 text-2xl font-black tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-xl",
+            isRugged
+              ? "bg-black text-white border-b-8 border-gray-800 active:border-b-0 active:translate-y-2"
+              : "bg-linear-to-r from-cyan-500 to-blue-600 text-white rounded-2xl shadow-cyan-500/50"
+          )}
+        >
+          START GAME
+        </button>
+
+        <div className="text-center text-xs opacity-50">
+          High Score: {highScore}
+        </div>
+      </div>
+    </div>
+  );
+};
+--- src/components/ui/Keypad.tsx ---
+// src/components/ui/Keypad.tsx
+import React, { useEffect } from "react";
+import { cn } from "@/lib/utils";
+import { UIMode, AnswerType } from "@/types";
+import { ArrowUp, ArrowDown, Target } from "lucide-react";
+
+interface KeypadProps {
+  onInput: (type: AnswerType) => void;
+  disabled: boolean;
+  uiMode: UIMode;
+}
+
+export const Keypad: React.FC<KeypadProps> = ({
+  onInput,
+  disabled,
+  uiMode,
+}) => {
+  const isRugged = uiMode === "RUGGED";
+
+  // キーボードショートカット対応
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (disabled) return;
+      if (e.key === "ArrowUp") onInput("HIGH");
+      if (e.key === "ArrowDown") onInput("LOW");
+      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ")
+        onInput("JUST");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [disabled, onInput]);
+
+  const btnBase = isRugged
+    ? "bg-gray-200 text-black border-4 border-gray-400 active:translate-y-1 active:border-b-0"
+    : "backdrop-blur-md shadow-lg active:scale-95 transition-all";
+
+  const highLowStyle = isRugged
+    ? "hover:bg-gray-300"
+    : "bg-white/10 border border-white/20 text-white hover:bg-white/20";
+
+  const justStyle = isRugged
+    ? "bg-black text-white border-black hover:bg-gray-800"
+    : "bg-cyan-500/80 text-white border border-cyan-400 shadow-cyan-500/50 hover:bg-cyan-500";
+
+  return (
+    <div className="w-full max-w-sm mx-auto mt-6 flex gap-4 h-48">
+      {/* 左側: HIGH / LOW */}
+      <div className="flex-1 flex flex-col gap-4">
+        <button
+          disabled={disabled}
+          onClick={() => onInput("HIGH")}
+          className={cn(
+            "flex-1 rounded-2xl flex flex-col items-center justify-center text-xl font-black tracking-widest gap-1",
+            btnBase,
+            highLowStyle
+          )}
+        >
+          <ArrowUp size={32} />
+          HIGH
+        </button>
+        <button
+          disabled={disabled}
+          onClick={() => onInput("LOW")}
+          className={cn(
+            "flex-1 rounded-2xl flex flex-col items-center justify-center text-xl font-black tracking-widest gap-1",
+            btnBase,
+            highLowStyle
+          )}
+        >
+          <ArrowDown size={32} />
+          LOW
+        </button>
+      </div>
+
+      {/* 右側: JUST */}
+      <button
+        disabled={disabled}
+        onClick={() => onInput("JUST")}
+        className={cn(
+          "flex-1 rounded-2xl flex flex-col items-center justify-center text-3xl font-black tracking-widest gap-2",
+          btnBase,
+          justStyle
+        )}
+      >
+        <Target size={48} />
+        JUST
+      </button>
+    </div>
+  );
+};
+--- src/components/ui/NumberPanel.tsx ---
+// src/components/ui/NumberPanel.tsx
+import React from "react";
+import { cn } from "@/lib/utils";
+import { UIMode, GameStatus } from "@/types";
+
+interface NumberPanelProps {
+  formula: string;
+  value: number;
+  status: GameStatus;
+  uiMode: UIMode;
+}
+
+export const NumberPanel: React.FC<NumberPanelProps> = ({
+  formula,
+  value,
+  status,
+  uiMode,
+}) => {
+  const isRugged = uiMode === "RUGGED";
+  const isFlash = status === "FLASH";
+  const isInput = status === "INPUT";
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center w-full h-48 transition-all relative",
+        isRugged
+          ? "border-4 border-black bg-white"
+          : "bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl"
+      )}
+    >
+      {/* FLASH Phase: 計算式を一瞬表示 */}
+      <div
+        className={cn(
+          "absolute inset-0 flex items-center justify-center text-5xl sm:text-6xl font-black tracking-tighter transition-opacity duration-100",
+          isFlash
+            ? "opacity-100 scale-100"
+            : "opacity-0 scale-95 pointer-events-none"
+        )}
+      >
+        {formula} = ?
+      </div>
+
+      {/* INPUT Phase: 判定対象の数字を表示 */}
+      <div
+        className={cn(
+          "absolute inset-0 flex items-center justify-center text-7xl sm:text-8xl font-black tracking-tighter transition-all duration-100",
+          isInput
+            ? isRugged
+              ? "text-black"
+              : "text-white scale-110 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+            : "opacity-0 scale-150"
+        )}
+      >
+        {value}
+      </div>
+
+      {/* 待機中の表示 */}
+      {!isFlash && !isInput && (
+        <div className="animate-pulse opacity-50 font-mono">WAITING...</div>
+      )}
+    </div>
+  );
+};
+--- src/app/page.tsx ---
+// src/app/page.tsx
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { GameConfig } from "@/types";
+import { useGameEngine } from "@/hooks/useGameEngine";
+import { HomeScreen } from "@/components/screens/HomeScreen";
+import { GameScreen } from "@/components/screens/GameScreen";
+import { ResultScreen } from "@/components/screens/ResultScreen";
+
+export default function Page() {
+  // 設定の初期値
+  const [config, setConfig] = useState<GameConfig>({
+    difficulty: "NORMAL",
+    uiMode: "RUGGED",
+    isSoundEnabled: true,
+  });
+
+  // ゲームエンジンの呼び出し
+  const {
+    gameState,
+    feedback,
+    initGame,
+    startGame,
+    exitGame,
+    handleAnswer,
+    setDifficulty,
+  } = useGameEngine(config.isSoundEnabled, config.uiMode);
+
+  // 難易度設定の同期
+  useEffect(() => {
+    setDifficulty(config.difficulty);
+  }, [config.difficulty, setDifficulty]);
+
+  // 1. ホーム画面 (IDLE状態)
+  if (gameState.status === "IDLE") {
+    return (
+      <HomeScreen
+        config={config}
+        setConfig={setConfig}
+        highScore={gameState.highScore}
+        onStart={() => initGame(config.difficulty)}
+      />
+    );
+  }
+
+  // 2. リザルト画面 (GAMEOVER状態)
+  if (gameState.status === "GAMEOVER") {
+    return (
+      <ResultScreen
+        gameState={gameState}
+        uiMode={config.uiMode}
+        onRetry={() => initGame(config.difficulty)}
+        onHome={exitGame}
+      />
+    );
+  }
+
+  // 3. ゲーム画面 (プレイ中)
+  return (
+    <GameScreen
+      config={config}
+      gameState={gameState}
+      feedback={feedback}
+      onAnswer={handleAnswer}
+      onAbort={exitGame}
+      onStartGame={startGame}
+    />
+  );
+}
+--- src/app/manifest.ts ---
+--- src/app/layout.tsx ---
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+      </body>
+    </html>
+  );
+}
+--- src/app/globals.css ---
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+--- src/lib/gameLogic.ts ---
+// src/lib/gameLogic.ts
+import { Difficulty, AnswerType } from '@/types';
+
+interface Problem {
+  formula: string;    // 表示用計算式
+  answer: number;     // 実際の計算結果
+  display: number;    // 提示する数値
+  type: AnswerType;   // 正解タイプ (HIGH/JUST/LOW)
+}
+
+// 難易度ごとの設定
+const SETTINGS = {
+  EASY: {
+    min: 10, max: 50,    // 数字の範囲
+    terms: 2,            // 計算する項数 (例: A + B)
+    diffRange: [10, 20], // JUSTじゃない時のズレ幅 (10〜20)
+    justRate: 0.4        // JUSTが出る確率 40%
+  },
+  NORMAL: {
+    min: 20, max: 90,
+    terms: 2,
+    diffRange: [5, 15],
+    justRate: 0.35
+  },
+  HARD: {
+    min: 100, max: 500,
+    terms: 2,
+    diffRange: [1, 10],
+    justRate: 0.3
+  },
+  EXTREME: {
+    min: 100, max: 999,
+    terms: 3,            // 3つの数字の計算 (A + B + C)
+    diffRange: [1, 5],   // 誤差1〜5という鬼畜仕様
+    justRate: 0.3
+  }
+};
+
+/**
+ * ランダムな整数を生成 (min以上 max以下)
+ */
+const randomInt = (min: number, max: number) => 
+  Math.floor(Math.random() * (max - min + 1)) + min;
+
+/**
+ * 問題を生成する
+ */
+export const generateProblem = (difficulty: Difficulty): Problem => {
+  const setting = SETTINGS[difficulty];
+  const nums: number[] = [];
+  
+  // 1. 計算式の数値を生成
+  for (let i = 0; i < setting.terms; i++) {
+    nums.push(randomInt(setting.min, setting.max));
+  }
+  
+  const answer = nums.reduce((a, b) => a + b, 0);
+  const formula = nums.join(' + ');
+
+  // 2. 正解タイプを決定 (HIGH / JUST / LOW)
+  const rand = Math.random();
+  let type: AnswerType;
+  
+  // JUST判定
+  if (rand < setting.justRate) {
+    type = 'JUST';
+  } else {
+    // JUSTでなければ HIGH か LOW (半々)
+    type = Math.random() < 0.5 ? 'HIGH' : 'LOW';
+  }
+
+  // 3. 表示する数値を決定
+  let display = answer;
+  const diff = randomInt(setting.diffRange[0], setting.diffRange[1]);
+
+  if (type === 'HIGH') {
+    // 答えの方が「高い」 -> 表示値は答えより小さい
+    // 例: 答え100, 表示90 -> HIGH
+    display = answer - diff;
+  } else if (type === 'LOW') {
+    // 答えの方が「低い」 -> 表示値は答えより大きい
+    // 例: 答え100, 表示110 -> LOW
+    display = answer + diff;
+  }
+  // type === 'JUST' なら display = answer のまま
+
+  return { formula, answer, display, type };
+};--- src/lib/utils.ts ---
+// src/lib/utils.ts
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+// クラス名の結合ユーティリティ
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+// 漢数字・全角数字・ひらがな読みを半角数字に変換するパーサー（今回は未使用だがエラー防止のため残す）
+export const parseVoiceInput = (text: string): number | 'PASS' | null => {
+  if (!text) return null;
+  let str = text.trim();
+
+  if (/パス|スキップ|次|next|skip/gi.test(str)) {
+    return 'PASS';
+  }
+
+  const kanjiMap: { [key: string]: number } = {
+    '〇':0, '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9,
+    '０':0, '１':1, '２':2, '３':3, '４':4, '５':5, '６':6, '７':7, '８':8, '９':9
+  };
+  
+  str = str.split('').map(char => kanjiMap[char] !== undefined ? kanjiMap[char] : char).join('');
+  str = str.replace(/[^0-9]/g, "");
+
+  if (str === "") return null;
+  
+  const num = parseInt(str, 10);
+  return isNaN(num) ? null : num;
+};--- src/lib/storage.ts ---
+// src/lib/storage.ts
+
+const HIGHSCORE_KEY = 'hjl_highscore'; // キー名を変更してBetweenと競合しないようにしました
+
+export const getHighScore = (): number => {
+  if (typeof window === 'undefined') return 0;
+  const saved = localStorage.getItem(HIGHSCORE_KEY);
+  return saved ? parseInt(saved, 10) : 0;
+};
+
+export const saveHighScore = (score: number): void => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(HIGHSCORE_KEY, score.toString());
+};--- src/hooks/useVoiceInput.ts ---
+--- src/hooks/useGameEngine.ts ---
+// src/hooks/useGameEngine.ts
+import { useState, useEffect, useCallback, useRef } from 'react';
+// ↓もしエラーが出る場合は import { ... } from '../types'; と相対パスに変えてみてください
+import { GameState, Difficulty, FeedbackState, AnswerType, UIMode } from '@/types';
+import { generateProblem } from '@/lib/gameLogic';
+import { getHighScore, saveHighScore } from '@/lib/storage';
+
+const GAUGE_MAX = 100;
+// const GAUGE_DECREASE_SPEED = 0.2; 
+
+const TIME_SETTINGS = {
+  EASY:    { flash: 1200, limit: 3000, damage: 15, heal: 10 },
+  NORMAL:  { flash: 800,  limit: 2000, damage: 20, heal: 8 },
+  HARD:    { flash: 600,  limit: 1500, damage: 25, heal: 6 },
+  EXTREME: { flash: 400,  limit: 1000, damage: 30, heal: 5 },
+};
+
+export const useGameEngine = (soundEnabled: boolean, uiMode: UIMode) => {
+  const [gameState, setGameState] = useState<GameState>({
+    status: 'IDLE',
+    score: 0,
+    highScore: 0,
+    combo: 0,
+    maxCombo: 0,
+    clearGauge: 50,
+    difficulty: 'NORMAL', // ★ ここに初期値を追加
+    currentFormula: "",
+    targetValue: 0,
+    displayValue: 0,
+    correctType: 'JUST'
+  });
+  
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+
+  // ハイスコア読み込み
+  useEffect(() => {
+    setGameState(prev => ({ ...prev, highScore: getHighScore() }));
+  }, []);
+
+  // ハイスコア保存
+  useEffect(() => {
+    if (gameState.score > gameState.highScore) {
+      saveHighScore(gameState.score);
+      setGameState(prev => ({ ...prev, highScore: prev.score }));
+    }
+  }, [gameState.score, gameState.highScore]);
+
+  // ゲームループ管理
+  useEffect(() => {
+    if (gameState.status !== 'INPUT') return;
+
+    const settings = TIME_SETTINGS[gameState.difficulty]; // 型定義修正によりエラー解消
+    
+    const timeoutId = setTimeout(() => {
+      handleAnswer('MISS_TIMEOUT');
+    }, settings.limit);
+
+    return () => clearTimeout(timeoutId);
+  }, [gameState.status, gameState.currentFormula, gameState.difficulty]);
+
+  // 次の問題へ
+  const nextProblem = useCallback((diff: Difficulty) => {
+    const prob = generateProblem(diff);
+    const settings = TIME_SETTINGS[diff];
+
+    setGameState(prev => ({
+      ...prev,
+      status: 'FLASH',
+      currentFormula: prob.formula,
+      targetValue: prob.answer,
+      displayValue: prob.display,
+      correctType: prob.type,
+      difficulty: diff // 現在の難易度を更新
+    }));
+
+    setTimeout(() => {
+      setGameState(prev => {
+        if (prev.status !== 'FLASH') return prev;
+        return { ...prev, status: 'INPUT' };
+      });
+    }, settings.flash);
+
+  }, []);
+
+  const initGame = useCallback((diff: Difficulty = 'NORMAL') => {
+    setGameState(prev => ({
+      ...prev,
+      status: 'COUNTDOWN',
+      score: 0,
+      combo: 0,
+      clearGauge: 50,
+      difficulty: diff
+    }));
+    setFeedback(null);
+  }, []);
+
+  const startGame = useCallback(() => {
+    // initGameでセットされた難易度を使用
+    nextProblem(gameState.difficulty);
+  }, [gameState.difficulty, nextProblem]);
+
+  const exitGame = useCallback(() => {
+    setGameState(prev => ({ ...prev, status: 'IDLE' }));
+  }, []);
+
+  const handleAnswer = useCallback((playerAns: AnswerType | 'MISS_TIMEOUT') => {
+    if (gameState.status !== 'INPUT' && playerAns !== 'MISS_TIMEOUT') return;
+
+    const settings = TIME_SETTINGS[gameState.difficulty];
+    const isCorrect = playerAns === gameState.correctType;
+
+    if (isCorrect) {
+      setFeedback({ type: 'CORRECT', msg: gameState.correctType });
+      
+      setGameState(prev => {
+        const newGauge = Math.min(GAUGE_MAX, prev.clearGauge + settings.heal);
+        const newCombo = prev.combo + 1;
+        return {
+          ...prev,
+          score: prev.score + 100 + (prev.combo * 10),
+          combo: newCombo,
+          maxCombo: Math.max(prev.maxCombo, newCombo),
+          clearGauge: newGauge,
+        };
+      });
+
+      // @ts-ignore
+      setTimeout(() => {
+        setFeedback(null);
+        nextProblem(gameState.difficulty);
+      }, 200);
+
+    } else {
+      setFeedback({ type: playerAns === 'MISS_TIMEOUT' ? 'TIME_UP' : 'MISS', msg: 'MISS' });
+      
+      setGameState(prev => {
+        const newGauge = prev.clearGauge - settings.damage;
+        if (newGauge <= 0) {
+          return { ...prev, status: 'GAMEOVER', clearGauge: 0, combo: 0 };
+        }
+        return { ...prev, combo: 0, clearGauge: newGauge };
+      });
+
+      // @ts-ignore
+      if (gameState.clearGauge > 0) {
+        setTimeout(() => {
+            setFeedback(null);
+            nextProblem(gameState.difficulty);
+        }, 500);
+      }
+    }
+  }, [gameState.status, gameState.correctType, gameState.difficulty, gameState.clearGauge, nextProblem]);
+
+  const setDifficulty = useCallback((diff: Difficulty) => {
+    setGameState(prev => ({ ...prev, difficulty: diff }));
+  }, []);
+
+  return {
+    gameState,
+    feedback,
+    initGame,
+    startGame,
+    exitGame,
+    handleAnswer,
+    setDifficulty
+  };
+};--- src/hooks/useSmartVoiceJudge.ts ---
+--- src/hooks/useSound.ts ---
+// src/hooks/useSound.ts
+import { useCallback, useRef, useEffect } from 'react';
+
+export const useSound = (enabled: boolean = true) => {
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        audioContextRef.current = new AudioContext();
+      }
+    }
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  const playTone = useCallback((freq: number, type: OscillatorType, duration: number, vol: number = 0.1) => {
+    if (!enabled || !audioContextRef.current) return;
+    const ctx = audioContextRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  }, [enabled]);
+
+  // 正解音: ピコン！
+  const playCorrect = useCallback(() => {
+    if (!enabled || !audioContextRef.current) return;
+    const ctx = audioContextRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(2000, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  }, [enabled]);
+
+  // パス音（今回はMISS音として流用）
+  const playPass = useCallback(() => playTone(400, 'triangle', 0.15, 0.2), [playTone]);
+
+  // カウントダウン (3, 2, 1)
+  const playCount = useCallback(() => playTone(800, 'sine', 0.1, 0.2), [playTone]);
+
+  // カウントダウン (GO!)
+  const playGo = useCallback(() => playTone(1600, 'square', 0.4, 0.2), [playTone]);
+
+  return { playCorrect, playPass, playCount, playGo };
+};--- src/types/index.ts ---
+// src/types/index.ts
+
+export type Difficulty = 'EASY' | 'NORMAL' | 'HARD' | 'EXTREME';
+export type UIMode = 'RUGGED' | 'LUXURY';
+export type GameStatus = 'IDLE' | 'COUNTDOWN' | 'FLASH' | 'INPUT' | 'RESULT' | 'GAMEOVER';
+export type AnswerType = 'HIGH' | 'JUST' | 'LOW';
+
+export interface GameConfig {
+  difficulty: Difficulty;
+  uiMode: UIMode;
+  isSoundEnabled: boolean;
+}
+
+export interface GameState {
+  status: GameStatus;
+  score: number;
+  highScore: number;
+  combo: number;
+  maxCombo: number;
+  clearGauge: number;
+  
+  // ★ ここに追加 ★
+  difficulty: Difficulty; 
+
+  // 現在の問題データ
+  currentFormula: string;
+  targetValue: number;
+  displayValue: number;
+  correctType: AnswerType;
+}
+
+export interface FeedbackState {
+  type: 'CORRECT' | 'MISS' | 'TIME_UP';
+  msg: string;
+}
