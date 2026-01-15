@@ -1,4 +1,4 @@
-# アプリ名（High-Just-Low）
+# High-Just-Low
 
 **[📱 アプリを起動する (Demo)](https://high-just-low.vercel.app/)**
 
